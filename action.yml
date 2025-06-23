@@ -66,6 +66,6 @@ runs:
 
     - name: Install packages with cache
       if: ${{ inputs.cache == 'true' }}
-      uses: awalsh128/cache-apt-pkgs-action@1.4.3
+      uses: awalsh128/cache-apt-pkgs-action@v1.4.3
       with:
         packages: ${{ inputs.packages }}
