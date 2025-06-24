@@ -45,21 +45,23 @@ We wanted an action that is fast, efficient, and easy to use. This action is des
 
 ## Measurements in Detail
 
+Installing graphviz 375 times every 10 minutes with different methods, measuring the time it takes to install the package.
+
 | Method | Mean (s) | Median (s) | 30–60s | >60s |
 |--------|----------|------------|--------|------|
-| Install via setup-graphviz action | 🔴 28.6 | 🔴 23.0 | 4 | 31 |
-| Install via apt | 🔴 26.0 | 🟡 20.0 | 4 | 27 |
-| Install via setup-graphviz action, no apt update | 🔴 25.3 | 🟡 17.0 | 11 | 32 |
-| Install via apt, no apt update, no recommends | 🔴 24.1 | 🟡 14.0 | 13 | 33 |
-| Download and install .deb files | 🔴 23.6 | 🟡 17.0 | 13 | 24 |
-| Get .deb files from GitHub cache and install them | 🔴 21.4 | 🟡 15.0 | 15 | 23 |
-| Install via apt, no apt update | 🔴 21.3 | 🟡 14.0 | 12 | 21 |
-| Install via setup-graphviz action, no mandb | 🟡 16.3 | 🟡 15.0 | 6 | 0 |
-| Install via apt, no mandb | 🟡 14.5 | 🟡 13.0 | 6 | 2 |
-| Download and install .deb files, no mandb | 🟡 10.6 | 🟢 9.0 | 0 | 0 |
-| Install via setup-graphviz action, no apt update, no mandb | 🟢 9.8 | 🟢 8.0 | 1 | 0 |
-| Install via apt, no apt update, no mandb | 🟢 8.3 | 🟢 7.0 | 1 | 0 |
-| Get .deb files from GitHub cache and install them, no mandb | 🟢 8.2 | 🟢 7.0 | 2 | 0 |
-| Install via apt, no apt update, no recommends, no mandb | 🟢 7.5 | 🟢 7.0 | 0 | 0 |
-| Install via cache-apt-pkgs action | 🟢 6.6 | 🟢 6.0 | 0 | 0 |
-| Install via cache-apt-pkgs action, no mandb | 🟢 6.5 | 🟢 6.0 | 0 | 0 |
+| Install via setup-graphviz action | 🔴 27.5 | 🔴 23.0 | 1.1% | 9.1% |
+| Install via apt | 🔴 26.5 | 🟡 20.0 | 1.3% | 9.9% |
+| Install via setup-graphviz action, no apt update | 🔴 24.5 | 🟡 17.0 | 4.3% | 10.1% |
+| Install via apt, no apt update, no recommends | 🔴 23.5 | 🟡 14.0 | 4.8% | 10.7% |
+| Download and install .deb files | 🔴 23.2 | 🟡 17.0 | 3.5% | 8.0% |
+| Get .deb files from GitHub cache and install them | 🔴 21.9 | 🟡 15.0 | 5.6% | 7.5% |
+| Install via apt, no apt update | 🔴 21.0 | 🟡 14.0 | 4.3% | 7.2% |
+| Install via setup-graphviz action, no mandb | 🟡 16.3 | 🟡 15.0 | 1.9% | - |
+| Install via apt, no mandb | 🟡 14.8 | 🟡 13.0 | 2.1% | 0.5% |
+| Download and install .deb files, no mandb | 🟡 10.8 | 🟢 10.0 | - | - |
+| Install via setup-graphviz action, no apt update, no mandb | 🟡 10.0 | 🟢 8.0 | 0.5% | - |
+| Install via apt, no apt update, no mandb | 🟢 8.5 | 🟢 7.0 | 0.3% | 0.3% |
+| Get .deb files from GitHub cache and install them, no mandb | 🟢 8.3 | 🟢 7.0 | 0.5% | - |
+| Install via apt, no apt update, no recommends, no mandb | 🟢 7.4 | 🟢 6.0 | - | - |
+| Install via cache-apt-pkgs action, no mandb | 🟢 6.6 | 🟢 6.0 | - | - |
+| Install via cache-apt-pkgs action | 🟢 6.5 | 🟢 6.0 | - | - |
