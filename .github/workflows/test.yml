@@ -1,0 +1,91 @@
+name: Self Test
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  test-action:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run apt-install action
+        uses: ./
+        with:
+          packages: jq
+      - name: Verify installation
+        run: |
+          # Check if jq is installed
+          jq --version || (echo "jq not installed" && exit 1)
+
+  install-jq-default:
+    name: Install jq (default params)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run apt-install action (default params)
+        uses: ./
+        with:
+          packages: jq
+      - name: Verify installation
+        run: jq --version || (echo "jq not installed" && exit 1)
+
+  install-jq-cache-false:
+    name: Install jq (cache false)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run apt-install action (cache false)
+        uses: ./
+        with:
+          packages: jq
+          cache: false
+      - name: Verify installation
+        run: jq --version || (echo "jq not installed" && exit 1)
+
+  install-jq-mandb-true:
+    name: Install jq (mandb true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run apt-install action (mandb true)
+        uses: ./
+        with:
+          packages: jq
+          mandb: true
+      - name: Verify installation
+        run: jq --version || (echo "jq not installed" && exit 1)
+
+  install-jq-apt-update:
+    name: Install jq (apt_update true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run apt-install action (apt_update true)
+        uses: ./
+        with:
+          packages: jq
+          apt_update: true
+      - name: Verify installation
+        run: jq --version || (echo "jq not installed" && exit 1)
+
+  install-jq-recommends:
+    name: Install jq (recommends true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run apt-install action (recommends true)
+        uses: ./
+        with:
+          packages: jq
+          recommends: true
+      - name: Verify installation
+        run: jq --version || (echo "jq not installed" && exit 1)

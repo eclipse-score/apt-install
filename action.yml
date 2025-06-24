@@ -1,0 +1,71 @@
+# *******************************************************************************
+# Copyright (c) 2025 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+name: Install Packages
+description: This action installs specified packages.
+
+inputs:
+  cache:
+    description: Use a cache to speed up the installation of packages.
+    default: "true"
+  mandb:
+    description: Update the mandb database after installing packages.
+    default: "false"
+  apt_update:
+    description: Run apt-get update before installing packages.
+    default: "false"
+  recommends:
+    description: Install recommended dependencies.
+    default: "false"
+  packages:
+    description: List of packages to install, separated by spaces.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # No cache implementation in this action, but input is present for compatibility
+
+    - name: Disable mandb updates
+      if: ${{ inputs.mandb == 'false' }}
+      shell: bash
+      run: |
+        echo "⚙️  Disabling man-db trigger..."
+        sudo ln -sf /bin/true /usr/bin/mandb
+
+    - name: Update package lists
+      if: ${{ inputs.apt_update == 'true' }}
+      shell: bash
+      run: |
+        echo "Running apt-get update..."
+        sudo apt-get update
+        echo "Package lists updated successfully."
+
+    - name: Install packages
+      if: ${{ inputs.cache == 'false' }}
+      shell: bash
+      run: |
+        echo "Installing packages: ${{ inputs.packages }}"
+        if [[ "${{ inputs.recommends }}" == "false" ]]; then
+          NORECOMMENDS="--no-install-recommends"
+        else
+          NORECOMMENDS=""
+        fi
+        sudo apt-get install -y $NORECOMMENDS ${{ inputs.packages }}
+        echo "Packages installed successfully."
+
+    - name: Install packages with cache
+      if: ${{ inputs.cache == 'true' }}
+      uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+      with:
+        packages: ${{ inputs.packages }}
