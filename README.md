@@ -1,4 +1,4 @@
-# Installing packages... the convinient way
+# Installing packages... the convenient way
 
 ## Why use this action?
 
