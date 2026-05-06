@@ -1,0 +1,123 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+name: Benchmark
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+
+jobs:
+  benchmark-plain-apt:
+    runs-on: ubuntu-latest
+    outputs:
+      duration: ${{ steps.timing.outputs.duration }}
+    steps:
+      - name: Record start time
+        id: timer_start
+        run: echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Install graphviz via apt
+        run: sudo apt-get install -y graphviz
+
+      - name: Compute duration
+        id: timing
+        run: |
+          end=$(date +%s)
+          duration=$((end - ${{ steps.timer_start.outputs.time }}))
+          echo "duration=$duration" >> "$GITHUB_OUTPUT"
+
+  benchmark-action:
+    runs-on: ubuntu-latest
+    outputs:
+      duration: ${{ steps.timing.outputs.duration }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Record start time
+        id: timer_start
+        run: echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Install graphviz via action
+        uses: ./
+        with:
+          packages: graphviz
+
+      - name: Compute duration
+        id: timing
+        run: |
+          end=$(date +%s)
+          duration=$((end - ${{ steps.timer_start.outputs.time }}))
+          echo "duration=$duration" >> "$GITHUB_OUTPUT"
+
+  summary:
+    needs: [benchmark-plain-apt, benchmark-action]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore historical data
+        uses: actions/cache/restore@v4
+        with:
+          path: benchmark-results.csv
+          key: benchmark-data-${{ github.run_id }}
+          restore-keys: benchmark-data-
+
+      - name: Append current results
+        run: |
+          touch benchmark-results.csv
+          echo "${{ needs.benchmark-plain-apt.outputs.duration }},${{ needs.benchmark-action.outputs.duration }}" >> benchmark-results.csv
+
+      - name: Compute statistics and write summary
+        run: |
+          stats_for() {
+            local col="$1"
+            local label="$2"
+            cut -d',' -f"${col}" benchmark-results.csv | sort -n > /tmp/dur.txt
+            awk -v label="$label" '
+              { d[NR] = $1; total += $1 }
+              END {
+                mean = total / NR
+                median = d[int((NR + 1) / 2)]
+                for (i = 1; i <= NR; i++) {
+                  if (d[i] >= 30 && d[i] < 60) n30++
+                  if (d[i] >= 60) n60++
+                }
+                p30 = (n30 + 0) / NR * 100
+                p60 = (n60 + 0) / NR * 100
+
+                me = mean < 10 ? "🟢" : (mean < 20 ? "🟡" : "🔴")
+                md = median < 10 ? "🟢" : (median < 20 ? "🟡" : "🔴")
+                s30 = p30 == 0 ? "-" : sprintf("%.1f%%", p30)
+                s60 = p60 == 0 ? "-" : sprintf("%.1f%%", p60)
+
+                printf "| %s | %s %.1f | %s %.1f | %s | %s |\n", label, me, mean, md, median, s30, s60
+              }
+            ' /tmp/dur.txt
+          }
+
+          n=$(wc -l < benchmark-results.csv)
+
+          {
+            echo "## Benchmark Results (n=${n})"
+            echo ""
+            echo "| Method | Mean (s) | Median (s) | 30–60s | >60s |"
+            echo "|--------|----------|------------|--------|------|"
+            stats_for 1 "\`apt install graphviz\`"
+            stats_for 2 "via this action"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save updated data
+        uses: actions/cache/save@v4
+        with:
+          path: benchmark-results.csv
+          key: benchmark-data-${{ github.run_id }}
