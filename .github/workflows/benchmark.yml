@@ -16,6 +16,7 @@ name: Benchmark
 on:
   schedule:
     - cron: "*/5 * * * *"
+  workflow_dispatch:
 
 jobs:
   benchmark-plain-apt:
