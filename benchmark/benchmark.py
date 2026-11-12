@@ -11,7 +11,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-#!/usr/bin/env python3
 """Measure the real action on hosted runners and retain independently usable data."""
 
 import argparse
@@ -56,8 +55,6 @@ def prepare():
     Path(".benchmark-action").mkdir(exist_ok=True)
     Path(".benchmark-action/action.yml").write_text(source)
 
-
-def start():
     # A preinstalled package would turn a measurement into a misleading no-op.
     installed = subprocess.run(
         ["dpkg-query", "-W", "-f=${Status}", "graphviz"],
@@ -104,9 +101,9 @@ def record():
         errors.append(str(exc))
     row = {
         "schema": SCHEMA,
-        "run_id": os.environ["GITHUB_RUN_ID"],
-        "attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-        "sha": os.environ["GITHUB_SHA"],
+        **{key: os.environ[env] for key, env in (
+            ("run_id", "GITHUB_RUN_ID"), ("attempt", "GITHUB_RUN_ATTEMPT"), ("sha", "GITHUB_SHA"),
+        )},
         "started_at": started.get("started_at"),
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "method": method,
@@ -211,12 +208,9 @@ def summarize(directory, restore):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="operation", required=True)
-    for operation in ("prepare", "start", "record"):
-        sub.add_parser(operation)
-    report = sub.add_parser("summarize")
-    report.add_argument("directory")
-    report.add_argument("--restore-history", action="store_true")
+    parser.add_argument("operation", choices=("prepare", "record", "summarize"))
+    parser.add_argument("directory", nargs="?", default="measurements")
+    parser.add_argument("--restore-history", action="store_true")
     args = parser.parse_args()
     if args.operation == "summarize":
         summarize(args.directory, args.restore_history)

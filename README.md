@@ -68,9 +68,38 @@ Installing graphviz 375 times every 10 minutes with different methods, measuring
 
 ## Current runner benchmarks
 
-The hourly [benchmark workflow](.github/workflows/benchmark.yml) compares direct
-APT installation with uncached, cold-cache and warm-cache action runs, each with
-and without an explicit package-list update. See [benchmark documentation](benchmark/README.md)
-for methodology, retained JSON/CSV data and the rolling 14-day report. The older
-measurements above predate GitHub's disabling of automatic man-db updates and
+The [benchmark workflow](.github/workflows/benchmark.yml) runs hourly at minute 17
+on Ubuntu 24.04, with a manual trigger for trials. Scheduling can be delayed;
+use the recorded UTC timestamps to compare times of day. Allow at least two weeks
+before interpreting the results. The schedule activates after merge to the default branch.
+
+Eight fresh runners compare plain apt, the action without caching, a cache miss
+and a cache hit, each with and without an explicit apt update. The apt baseline
+keeps the runner's man-db settings; the action uses its defaults. A temporary
+copy of the action forwards a unique cache version per run/attempt/update setting
+and exposes cache status and package versions. Cold runs seed the subsequent warm
+runs. Unexpected cache results, preinstalled Graphviz and failed SVG renders are
+recorded as failures. The published action is unchanged.
+
+Timing includes installation, cache restore/save and step transitions, excluding
+checkout, action downloads, verification and provisioning. Jobs time out after
+15 minutes; missing measurements are flagged. The cache backend can install
+recommended packages and update package lists regardless of the wrapper's flags,
+so this compares actual action behavior, including those differences.
+
+Raw JSON and cumulative JSON/CSV/report artifacts are retained for 90 days.
+Each summary carries forward the latest history on the same branch, deduplicates
+observations and reports the last 14 days: success/failure counts, mean, median,
+nearest-rank p95 and the fraction strictly above 60 seconds. API errors fail the
+summary rather than silently dropping history. Serialized runs prevent lost
+updates. Runner image/version, commit, timestamps, package versions and diagnostic
+errors remain in the raw data for analysis by hour or runner image. Cumulative
+artifacts carry older data forward as long as the experiment remains active.
+
+Download results with `gh run download RUN_ID --repo eclipse-score/apt-install
+--name benchmark-history`. To rebuild a report from downloaded raw artifacts,
+run `python3 benchmark/benchmark.py summarize PATH`. The helper uses only Python's
+standard library and the preinstalled `gh` CLI to restore history.
+
+The measurements above predate GitHub disabling automatic man-db updates and
 should not be interpreted as current runner performance.

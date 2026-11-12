@@ -41,12 +41,10 @@ jobs:
     env:
       METHOD: ${{ matrix.method }}
       APT_UPDATE: ${{ matrix.update }}
-    steps:
+    steps: &measurement
       - uses: actions/checkout@v6
-      - name: Prepare isolated cache and instrument action
+      - name: Prepare isolated cache and start measurement
         run: python3 benchmark/benchmark.py prepare
-      - name: Start measurement
-        run: python3 benchmark/benchmark.py start
       - name: Install with plain apt
         id: plain
         if: matrix.method == 'plain'
@@ -59,7 +57,7 @@ jobs:
         uses: ./.benchmark-action
         with:
           packages: graphviz
-          cache: ${{ matrix.method == 'cache-miss' && 'true' || 'false' }}
+          cache: ${{ startsWith(matrix.method, 'cache-') && 'true' || 'false' }}
           apt_update: ${{ matrix.update }}
           recommends: "false"
       - name: Record duration and verify installation
@@ -88,39 +86,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        method: [cache-hit]
         update: ["false", "true"]
     env:
-      METHOD: cache-hit
+      METHOD: ${{ matrix.method }}
       APT_UPDATE: ${{ matrix.update }}
-    steps:
-      - uses: actions/checkout@v6
-      - name: Prepare isolated cache and instrument action
-        run: python3 benchmark/benchmark.py prepare
-      - name: Start measurement
-        run: python3 benchmark/benchmark.py start
-      - name: Install with action
-        id: action
-        uses: ./.benchmark-action
-        with:
-          packages: graphviz
-          cache: "true"
-          apt_update: ${{ matrix.update }}
-          recommends: "false"
-      - name: Record duration and verify installation
-        if: always()
-        env:
-          INSTALL_OUTCOME: ${{ steps.action.outcome }}
-          CACHE_HIT: ${{ steps.action.outputs.cache-hit }}
-          PACKAGE_VERSIONS: ${{ steps.action.outputs.package-versions }}
-        run: python3 benchmark/benchmark.py record
-      - name: Preserve raw measurement
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-raw-cache-hit-${{ matrix.update }}
-          path: benchmark-result.json
-          retention-days: 90
-          if-no-files-found: error
+    steps: *measurement
 
   summary:
     needs: [measure, warm-cache]
