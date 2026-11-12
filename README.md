@@ -65,3 +65,12 @@ Installing graphviz 375 times every 10 minutes with different methods, measuring
 | Install via apt, no apt update, no recommends, no mandb | 🟢 7.4 | 🟢 6.0 | - | - |
 | Install via cache-apt-pkgs action, no mandb | 🟢 6.6 | 🟢 6.0 | - | - |
 | Install via cache-apt-pkgs action | 🟢 6.5 | 🟢 6.0 | - | - |
+
+## Current runner benchmarks
+
+The hourly [benchmark workflow](.github/workflows/benchmark.yml) compares direct
+APT installation with uncached, cold-cache and warm-cache action runs, each with
+and without an explicit package-list update. See [benchmark documentation](benchmark/README.md)
+for methodology, retained JSON/CSV data and the rolling 14-day report. The older
+measurements above predate GitHub's disabling of automatic man-db updates and
+should not be interpreted as current runner performance.
