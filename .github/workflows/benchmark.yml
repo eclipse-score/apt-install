@@ -43,8 +43,15 @@ jobs:
       APT_UPDATE: ${{ matrix.update }}
     steps: &measurement
       - uses: actions/checkout@v6
-      - name: Prepare isolated cache and start measurement
+      - name: Prepare isolated cache
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 benchmark/benchmark.py prepare
+      - name: Prepare action dependencies without installing packages
+        if: matrix.method != 'plain'
+        uses: ./.benchmark-dependencies
+      - name: Start measurement
+        run: python3 benchmark/benchmark.py start
       - name: Install with plain apt
         id: plain
         if: matrix.method == 'plain'
@@ -71,7 +78,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-raw-${{ matrix.method }}-${{ matrix.update }}
+          name: benchmark-raw-${{ matrix.method }}-${{ matrix.update }}-${{ github.run_attempt }}
           path: benchmark-result.json
           retention-days: 90
           if-no-files-found: error
@@ -112,6 +119,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-history
+          overwrite: true
           path: |
             benchmark-history.json
             benchmark-history.csv

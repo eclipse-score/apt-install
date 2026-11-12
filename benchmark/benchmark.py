@@ -19,6 +19,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import statistics
 import subprocess
 import tempfile
@@ -39,11 +40,26 @@ def prepare():
     packages = "        packages: ${{ inputs.packages }}\n"
     if source.count(anchor) != 1 or source.count(packages) != 1:
         raise RuntimeError("Update benchmark instrumentation for the current action")
-    # The seed must miss, and the second job restores it on a fresh runner.
+    # Retried warm jobs reuse the successful seed even if its attempt was earlier.
+    attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+    if os.environ["METHOD"] == "cache-hit":
+        with tempfile.TemporaryDirectory() as directory:
+            subprocess.run([
+                "gh", "run", "download", os.environ["GITHUB_RUN_ID"],
+                "--repo", os.environ["GITHUB_REPOSITORY"], "--pattern",
+                f"benchmark-raw-cache-miss-{os.environ['APT_UPDATE']}-*", "--dir", directory,
+            ], check=True)
+            seeds = [json.loads(p.read_text()) for p in Path(directory).rglob("benchmark-result.json")]
+            attempt = max(seeds, key=lambda seed: int(seed["attempt"]))["attempt"]
     version = "benchmark-v1-{}-{}-{}".format(
-        os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
-        os.environ["APT_UPDATE"],
+        os.environ["GITHUB_RUN_ID"], attempt, os.environ["APT_UPDATE"],
     )
+    # Executing this composite prepares remote dependencies, but skips every
+    # installation step. Its downloads complete before the measurement starts.
+    Path(".benchmark-dependencies").mkdir(exist_ok=True)
+    Path(".benchmark-dependencies/action.yml").write_text(re.sub(
+        r"^      if: .*$", "      if: ${{ false }}", source, flags=re.MULTILINE,
+    ))
     source = source.replace(anchor, anchor + "      id: benchmark-cache\n")
     source = source.replace(packages, packages + f'        version: "{version}"\n')
     source = source.replace(
@@ -55,6 +71,8 @@ def prepare():
     Path(".benchmark-action").mkdir(exist_ok=True)
     Path(".benchmark-action/action.yml").write_text(source)
 
+
+def start():
     # A preinstalled package would turn a measurement into a misleading no-op.
     installed = subprocess.run(
         ["dpkg-query", "-W", "-f=${Status}", "graphviz"],
@@ -126,11 +144,12 @@ def record():
 def restore_history():
     """Read the latest history artifact; API errors must be visible."""
     repository = os.environ["GITHUB_REPOSITORY"]
-    response = json.loads(command(
-        "gh", "api", f"repos/{repository}/actions/artifacts?name=benchmark-history&per_page=100",
+    pages = json.loads(command(
+        "gh", "api", "--paginate", "--slurp",
+        f"repos/{repository}/actions/artifacts?name=benchmark-history&per_page=100",
     ))
     artifacts = [
-        a for a in response["artifacts"] if not a["expired"]
+        a for page in pages for a in page["artifacts"] if not a["expired"]
         and a["workflow_run"]["head_branch"] == os.environ["GITHUB_REF_NAME"]
     ]
     if not artifacts:
@@ -197,8 +216,9 @@ def summarize(directory, restore):
         writer.writeheader()
         writer.writerows(rows)
     report = summary(rows)
-    if len(current) != 8:
-        report += f"\nWARNING: received {len(current)} of 8 expected measurements in this run.\n"
+    variants = {(r["method"], r["apt_update"]) for r in current}
+    if len(variants) != 8:
+        report += f"\nWARNING: received {len(variants)} of 8 expected measurements in this run.\n"
     Path("benchmark-summary.md").write_text(report)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
@@ -208,7 +228,7 @@ def summarize(directory, restore):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("prepare", "record", "summarize"))
+    parser.add_argument("operation", choices=("prepare", "start", "record", "summarize"))
     parser.add_argument("directory", nargs="?", default="measurements")
     parser.add_argument("--restore-history", action="store_true")
     args = parser.parse_args()

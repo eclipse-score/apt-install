@@ -78,7 +78,9 @@ and a cache hit, each with and without an explicit apt update. The apt baseline
 keeps the runner's man-db settings; the action uses its defaults. A temporary
 copy of the action forwards a unique cache version per run/attempt/update setting
 and exposes cache status and package versions. Cold runs seed the subsequent warm
-runs. Unexpected cache results, preinstalled Graphviz and failed SVG renders are
+runs, including when only failed warm jobs are retried. Dependencies are prepared
+in an untimed pass that skips installation. Unexpected cache results,
+preinstalled Graphviz and failed SVG renders are
 recorded as failures. The published action is unchanged.
 
 Timing includes installation, cache restore/save and step transitions, excluding
@@ -88,7 +90,7 @@ recommended packages and update package lists regardless of the wrapper's flags,
 so this compares actual action behavior, including those differences.
 
 Raw JSON and cumulative JSON/CSV/report artifacts are retained for 90 days.
-Each summary carries forward the latest history on the same branch, deduplicates
+Each summary searches all artifact pages for the latest history on the same branch, deduplicates
 observations and reports the last 14 days: success/failure counts, mean, median,
 nearest-rank p95 and the fraction strictly above 60 seconds. API errors fail the
 summary rather than silently dropping history. Serialized runs prevent lost
