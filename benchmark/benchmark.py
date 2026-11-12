@@ -16,16 +16,15 @@
 
 import argparse
 import csv
-import io
 import json
 import math
 import os
 from pathlib import Path
 import statistics
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
-import zipfile
 
 SCHEMA = 1
 
@@ -99,7 +98,9 @@ def record():
         )
         if "<svg" not in rendered.stdout:
             raise RuntimeError("Graphviz did not produce SVG")
-    except (OSError, subprocess.CalledProcessError, RuntimeError) as exc:
+    except subprocess.CalledProcessError as exc:
+        errors.append(f"{exc}: {exc.stderr.strip()}")
+    except (OSError, RuntimeError) as exc:
         errors.append(str(exc))
     row = {
         "schema": SCHEMA,
@@ -138,11 +139,12 @@ def restore_history():
     if not artifacts:
         return []
     latest = max(artifacts, key=lambda a: a["id"])
-    archive = subprocess.check_output([
-        "gh", "api", f"repos/{repository}/actions/artifacts/{latest['id']}/zip",
-    ])
-    with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
-        return json.loads(zipped.read("benchmark-history.json"))
+    with tempfile.TemporaryDirectory() as directory:
+        subprocess.run([
+            "gh", "run", "download", str(latest["workflow_run"]["id"]),
+            "--repo", repository, "--name", "benchmark-history", "--dir", directory,
+        ], check=True)
+        return json.loads(Path(directory, "benchmark-history.json").read_text())
 
 
 def summary(rows):
