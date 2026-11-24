@@ -15,165 +15,113 @@ name: Benchmark
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # Avoid the busy start of the hour. Scheduled jobs may still be delayed.
+    - cron: "17 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
+# Serialize history updates so two runs cannot append to the same predecessor.
+concurrency:
+  group: apt-install-benchmark
+  cancel-in-progress: false
+
 jobs:
-  benchmark-plain-apt:
-    runs-on: ubuntu-latest
-    outputs:
-      duration: ${{ steps.timing.outputs.duration }}
-    steps:
-      - name: Record start time
-        id: timer_start
-        run: echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Disable mandb updates (baseline parity)
+  measure:
+    name: ${{ matrix.method }} / update=${{ matrix.update }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [plain, action-no-cache, cache-miss]
+        update: ["false", "true"]
+    env:
+      METHOD: ${{ matrix.method }}
+      APT_UPDATE: ${{ matrix.update }}
+    steps: &measurement
+      - uses: actions/checkout@v6
+      - name: Prepare isolated cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 benchmark/benchmark.py prepare
+      - name: Prepare action dependencies without installing packages
+        if: matrix.method != 'plain'
+        uses: ./.benchmark-dependencies
+      - name: Start measurement
+        run: python3 benchmark/benchmark.py start
+      - name: Install with plain apt
+        id: plain
+        if: matrix.method == 'plain'
         run: |
-          if command -v mandb >/dev/null 2>&1; then
-            sudo ln -sf /bin/true "$(command -v mandb)"
-          else
-            echo "mandb not present on runner; baseline already equivalent"
-          fi
-
-      - name: Install graphviz via plain apt
-        run: |
-          sudo apt-get update
+          if [[ "$APT_UPDATE" == true ]]; then sudo apt-get update; fi
           sudo apt-get install -y --no-install-recommends graphviz
-
-      - name: Compute duration
-        id: timing
-        run: |
-          end=$(date +%s)
-          duration=$((end - ${{ steps.timer_start.outputs.time }}))
-          echo "duration=$duration" >> "$GITHUB_OUTPUT"
-
-  benchmark-action-no-cache:
-    runs-on: ubuntu-latest
-    outputs:
-      duration: ${{ steps.timing.outputs.duration }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Record start time
-        id: timer_start
-        run: echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Install graphviz via action (cache=false)
-        uses: ./
+      - name: Install with action
+        id: action
+        if: matrix.method != 'plain'
+        uses: ./.benchmark-action
         with:
           packages: graphviz
-          cache: false
-          apt_update: true
-          recommends: false
-          mandb: false
-
-      - name: Compute duration
-        id: timing
-        run: |
-          end=$(date +%s)
-          duration=$((end - ${{ steps.timer_start.outputs.time }}))
-          echo "duration=$duration" >> "$GITHUB_OUTPUT"
-
-  benchmark-action-cache:
-    runs-on: ubuntu-latest
-    outputs:
-      duration: ${{ steps.timing.outputs.duration }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Record start time
-        id: timer_start
-        run: echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Install graphviz via action (cache=true)
-        uses: ./
+          cache: ${{ startsWith(matrix.method, 'cache-') && 'true' || 'false' }}
+          apt_update: ${{ matrix.update }}
+          recommends: "false"
+      - name: Record duration and verify installation
+        if: always()
+        env:
+          INSTALL_OUTCOME: ${{ matrix.method == 'plain' && steps.plain.outcome || steps.action.outcome }}
+          CACHE_HIT: ${{ steps.action.outputs.cache-hit }}
+          PACKAGE_VERSIONS: ${{ steps.action.outputs.package-versions }}
+        run: python3 benchmark/benchmark.py record
+      - name: Preserve raw measurement
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          packages: graphviz
-          cache: true
-          apt_update: true
-          recommends: false
-          mandb: false
+          name: benchmark-raw-${{ matrix.method }}-${{ matrix.update }}-${{ github.run_attempt }}
+          path: benchmark-result.json
+          retention-days: 90
+          if-no-files-found: error
 
-      - name: Compute duration
-        id: timing
-        run: |
-          end=$(date +%s)
-          duration=$((end - ${{ steps.timer_start.outputs.time }}))
-          echo "duration=$duration" >> "$GITHUB_OUTPUT"
+  warm-cache:
+    name: cache-hit / update=${{ matrix.update }}
+    needs: measure
+    # Missing seeds are recorded as failed hits, even if another variant failed.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [cache-hit]
+        update: ["false", "true"]
+    env:
+      METHOD: ${{ matrix.method }}
+      APT_UPDATE: ${{ matrix.update }}
+    steps: *measurement
 
   summary:
-    needs: [benchmark-plain-apt, benchmark-action-no-cache, benchmark-action-cache]
-    runs-on: ubuntu-latest
+    needs: [measure, warm-cache]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Restore historical data
-        uses: actions/cache/restore@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
         with:
-          path: benchmark-results.csv
-          key: benchmark-data-${{ github.run_id }}
-          restore-keys: benchmark-data-
-
-      - name: Append current results
-        run: |
-          touch benchmark-results.csv
-
-
-          if [ -s benchmark-results.csv ] && awk -F',' 'NF!=3 {found=1} END{exit(found?0:1)}' benchmark-results.csv; then
-            mv benchmark-results.csv benchmark-results.legacy.csv
-            touch benchmark-results.csv
-          fi
-
-          echo "${{ needs.benchmark-plain-apt.outputs.duration }},${{ needs.benchmark-action-no-cache.outputs.duration }},${{ needs.benchmark-action-cache.outputs.duration }}" >> benchmark-results.csv
-
-      - name: Compute statistics and write summary
-        run: |
-          stats_for() {
-            local col="$1"
-            local label="$2"
-            cut -d',' -f"${col}" benchmark-results.csv | grep -E '^[0-9]+$' | sort -n > /tmp/dur.txt
-            awk -v label="$label" '
-              { d[NR] = $1; total += $1 }
-              END {
-                if (NR == 0) {
-                  printf "| %s | - | - | - | - |\n", label
-                  exit
-                }
-
-                mean = total / NR
-                median = d[int((NR + 1) / 2)]
-                for (i = 1; i <= NR; i++) {
-                  if (d[i] >= 30 && d[i] < 60) n30++
-                  if (d[i] >= 60) n60++
-                }
-                p30 = (n30 + 0) / NR * 100
-                p60 = (n60 + 0) / NR * 100
-
-                me = mean < 10 ? "🟢" : (mean < 20 ? "🟡" : "🔴")
-                md = median < 10 ? "🟢" : (median < 20 ? "🟡" : "🔴")
-                s30 = p30 == 0 ? "-" : sprintf("%.1f%%", p30)
-                s60 = p60 == 0 ? "-" : sprintf("%.1f%%", p60)
-
-                printf "| %s | %s %.1f | %s %.1f | %s | %s |\n", label, me, mean, md, median, s30, s60
-              }
-            ' /tmp/dur.txt
-          }
-
-          n=$(wc -l < benchmark-results.csv)
-
-          {
-            echo "## Benchmark Results (n=${n})"
-            echo ""
-            echo "| Method | Mean (s) | Median (s) | 30–60s | >60s |"
-            echo "|--------|----------|------------|--------|------|"
-            stats_for 1 "\`plain apt (update + install)\`"
-            stats_for 2 "\`action (cache=false)\`"
-            stats_for 3 "\`action (cache=true)\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Save updated data
-        uses: actions/cache/save@v4
+          pattern: benchmark-raw-*
+          path: measurements
+      - name: Carry forward history and summarize
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 benchmark/benchmark.py summarize measurements --restore-history
+      - name: Preserve cumulative history
+        uses: actions/upload-artifact@v4
         with:
-          path: benchmark-results.csv
-          key: benchmark-data-${{ github.run_id }}
+          name: benchmark-history
+          overwrite: true
+          path: |
+            benchmark-history.json
+            benchmark-history.csv
+            benchmark-summary.md
+          retention-days: 90
